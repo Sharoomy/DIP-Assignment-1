@@ -5,6 +5,11 @@ import os
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
+#get rid of warnings
+import warnings
+from astropy.units import UnitsWarning
+
+warnings.filterwarnings("ignore", category=UnitsWarning)
 
 # Imports
 from astropy.table import Table
@@ -28,31 +33,22 @@ files = {
 # Load and inspect all files
 tables = {}
 
-for name, filename in files.items():
+with open("table_output.txt", "w") as output:
 
-    filepath = data / filename
+    for name, filename in files.items():
 
-    print(f"\n{'='*70}")
-    print(name)
-    print(f"{'='*70}")
+        filepath = data / filename
 
-    try:
-        if not filepath.exists():
-            print(f"File not found: {filepath}")
-            continue
+        print(f"\n{'='*70}", file=output)
+        print(name, file=output)
+        print(f"{'='*70}", file=output)
 
         table = Table.read(filepath)
 
         tables[name] = table
 
-        print("\nNumber of rows:", len(table))
-        print("Number of columns:", len(table.colnames))
+        print("\nColumn names:", file=output)
+        print(table.colnames, file=output)
 
-        print("\nColumn names:")
-        print(table.colnames)
-
-        print("\nFirst 5 rows:")
-        print(table[:5])
-
-    except Exception as e:
-        print(f"Error reading {name}: {e}")
+        print("\nFirst 5 rows:", file=output)
+        print(table[:5], file=output)
