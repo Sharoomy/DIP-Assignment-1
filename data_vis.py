@@ -36,12 +36,23 @@ for name, filename in files.items():
     print(name)
     print(f"{'='*70}")
 
-    table = Table.read(filepath)
+    try:
+        if not filepath.exists():
+            print(f"File not found: {filepath}")
+            continue
 
-    tables[name] = table
+        table = Table.read(filepath)
 
-    print("\nColumn names:")
-    print(table.colnames)
+        tables[name] = table
 
-    print("\nFirst 5 rows:")
-    print(table[:5])
+        print("\nNumber of rows:", len(table))
+        print("Number of columns:", len(table.colnames))
+
+        print("\nColumn names:")
+        print(table.colnames)
+
+        print("\nFirst 5 rows:")
+        print(table[:5])
+
+    except Exception as e:
+        print(f"Error reading {name}: {e}")
