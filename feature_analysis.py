@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 #load data
 
-path = ("/user/home/dl23921/ass1/DIP_2026")
+path = Path("/user/home/dl23921/ass1/DIP_2026")
 
 #files 
 files = {
