@@ -83,17 +83,17 @@ with PdfPages(hist_pdf) as pdf:
 
             for ax, (feature, values) in zip(axes, page_features):
 
-                ax.hist(values, bins=50, edgecolor="black")
+                ax.hist(values, bins=50, FaceColor="purple", edgecolor="black")
 
                 ax.set_title(feature)
                 ax.set_xlabel("Feature value")
                 ax.set_ylabel("Frequency")
 
-            # Remove unused plots
+            #remove extra plots
             for ax in axes[len(page_features):]:
                 fig.delaxes(ax)
 
-            fig.suptitle(catalogue_name, fontsize=16)
+            fig.suptitle(catalogue_name, fontsize=24, fontweight='bold')
 
             plt.tight_layout()
             pdf.savefig(fig)
