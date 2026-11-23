@@ -41,14 +41,13 @@ morph_cat_df = pd.DataFrame(
     {f: np.asarray(morph_cat_table[f], dtype=float) for f in numerical_features}
 )
 
+morph_cat_df = morph_cat_df.replace([np.inf, -np.inf], np.nan)
+morph_cat_df = morph_cat_df.dropna()
+
 val_df = pd.DataFrame(
     {f: np.asarray(morph_cat_table[f])[morph_cat_df.index] for f in val_features},
     index=morph_cat_df.index,
 )
-
-morph_cat_df = morph_cat_df.replace([np.inf, -np.inf], np.nan)
-morph_cat_df = morph_cat_df.dropna()
-
 
 print(morph_cat_df.shape)
 print(morph_cat_df.head())
@@ -106,5 +105,7 @@ axes[-1].axvline(0, color="black", ls="--", lw=1)
 
 plt.tight_layout()
 plt.savefig("anomaly_density.png", dpi=200)
+
+
 
 #valide using the val features
