@@ -46,7 +46,7 @@ for row in vis_mosaic:
     ra = row['RIGHT_ASCENSION']
     dec = row['DECLINATION']
 
-    # Convert coordinates
+    #convert coordinates
     position = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
 
     # Extract image around galaxy
