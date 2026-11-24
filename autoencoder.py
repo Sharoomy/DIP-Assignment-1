@@ -22,36 +22,37 @@ import astropy.units as u
 
 path = Path("/user/home/dl23921/ass1/DIP_2026")
 
-gal_cutouts_cat = "EUC_MER_FINAL-CUTOUTS-CAT_TILE102159484-73BCF1_20241025T145359.184204Z_00.00.fits"
+morph_cat = "EUC_MER_FINAL-MORPH-CAT_TILE102159484-AE979F_20241026T003045.182961Z_00.00.fits"
 
-with fits.open(path / gal_cutouts_cat) as hdul:
-    morph_cat_table = Table(hdul['MER_CUTOUTS'].data)
+with fits.open(path / morph_cat) as hdul:
+    morph_cat_table = Table(hdul[1].data)
 
 vis_mosaic = "EUC_MER_BGSUB-MOSAIC-VIS_TILE102159484-116033_20241025T015934.885975Z_00.00.fits"
 
 with fits.open(path / vis_mosaic) as hdul:
-    hdul.info()
+    mosaic_img = hdul.info()
+    wcs = WCS(hdul[0].header)
 
 
-#make cutouts of galaxies from mosaic image
+#make cutouts of galaxies from mosaic image using info from galaxy cutouts catalog
 
 cutout_size = 64
 
 galaxy_images = []
 galaxy_ids = []
 
-for row in vis_mosaic:
+for row in morph_cat_table:
 
-    # Get galaxy coordinates
+    #get ra and dec of galaxy
     ra = row['RIGHT_ASCENSION']
     dec = row['DECLINATION']
 
-    #convert coordinates
+    #convert coordinates to use for mosaic
     position = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
 
-    # Extract image around galaxy
+    #cut out image around galaxy
     cutout = Cutout2D(
-        mosaic,
+        mosaic_img,
         position,
         size=(cutout_size, cutout_size),
         wcs=wcs,
@@ -68,9 +69,8 @@ for row in vis_mosaic:
 galaxy_images = np.array(galaxy_images)
 galaxy_ids = np.array(galaxy_ids)
 
-print("Galaxy images shape:", galaxy_images.shape)
 
-#prepeare data for autoencoder
+#prepare data for autoencoder
 images = np.asarray(galaxy_images, dtype=np.float32)
 
 #normalise pixel values to [0, 1] range
@@ -145,7 +145,9 @@ plt.hist(reconstruction_errors, bins=50)
 
 plt.xlabel("Reconstruction error")
 plt.ylabel("Number of galaxies")
-plt.title("Galaxy reconstruction errors")
+plt.title("Galaxy Reconstruction Errors")
+
+plt.savefig("recon_error_autoencoder.png", dpi=200)
 
 
 
@@ -173,6 +175,7 @@ plt.hist(anomaly_errors, bins=bins, density=True, alpha=0.5,
 plt.xlabel("Reconstruction Error")
 plt.ylabel("Density")
 plt.legend()
+plt.savefig("anomaly_density_autoencoder.png", dpi=200)
 
 
 #compare galaxies with reconstructed images for anomalies
@@ -195,4 +198,5 @@ for i in range(3):
     plt.axis('off')
 
 plt.tight_layout()
+plt.savefig("gal_compare_autoencoder.png", dpi=200)
 

@@ -104,7 +104,7 @@ for ax, col in zip(axes, plot_cols):
 axes[-1].axvline(0, color="black", ls="--", lw=1)
 
 plt.tight_layout()
-plt.savefig("anomaly_density.png", dpi=200)
+plt.savefig("anomaly_density_isoforest.png", dpi=200)
 
 
 
