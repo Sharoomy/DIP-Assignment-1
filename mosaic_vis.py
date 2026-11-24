@@ -3,6 +3,7 @@
 from astropy.io import fits
 import matplotlib.pyplot as plt
 from pathlib import Path
+from astropy.wcs import WCS
 
 #load fits files
 
