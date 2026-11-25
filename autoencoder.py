@@ -16,6 +16,7 @@ from pathlib import Path
 
 from astropy.wcs import WCS
 from astropy.nddata import Cutout2D
+from astropy.nddata.utils import NoOverlapError
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 #clean data
@@ -29,9 +30,7 @@ with fits.open(path / morph_cat) as hdul:
 
 vis_mosaic = "EUC_MER_BGSUB-MOSAIC-VIS_TILE102159484-116033_20241025T015934.885975Z_00.00.fits"
 
-with fits.open(path / vis_mosaic) as hdul:
-    mosaic_img = hdul.info()
-    wcs = WCS(hdul[0].header)
+
 
 
 #make cutouts of galaxies from mosaic image using info from galaxy cutouts catalog
@@ -41,30 +40,42 @@ cutout_size = 64
 galaxy_images = []
 galaxy_ids = []
 
-for row in morph_cat_table:
+with fits.open(path / vis_mosaic) as hdul:
+    hdul.info()
+    mosaic_img = np.asarray(hdul[0].data, dtype=np.float32)
+    wcs = WCS(hdul[0].header)
+    
+    for row in morph_cat_table:
 
     #get ra and dec of galaxy
-    ra = row['RIGHT_ASCENSION']
-    dec = row['DECLINATION']
+        ra = row['RIGHT_ASCENSION']
+        dec = row['DECLINATION']
 
     #convert coordinates to use for mosaic
-    position = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
+        position = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
 
-    #cut out image around galaxy
-    cutout = Cutout2D(
-        mosaic_img,
-        position,
-        size=(cutout_size, cutout_size),
-        wcs=wcs,
-        mode='partial',
-        fill_value=np.nan
-    )
+        try:
+            #cut out image around galaxy
+            cutout = Cutout2D(
+                    mosaic_img,
+                    position,
+                    size=(cutout_size, cutout_size),
+                    wcs=wcs,
+                    mode='partial',
+                    fill_value=np.nan
+                )
+            print(f"Cutout data shape: {cutout.data.shape}")
 
-    if np.isfinite(cutout.data).all():
+        except NoOverlapError:
+                continue
 
-        galaxy_images.append(cutout.data)
-        galaxy_ids.append(row['OBJECT_ID'])
+        if np.isfinite(cutout.data).all():
 
+            galaxy_images.append(cutout.data)
+            galaxy_ids.append(row['OBJECT_ID'])
+
+print(f"Mosaic image type: {type(mosaic_img)}")
+print(f"Mosaic image shape: {mosaic_img.shape}")
 
 galaxy_images = np.array(galaxy_images)
 galaxy_ids = np.array(galaxy_ids)
@@ -73,7 +84,7 @@ galaxy_ids = np.array(galaxy_ids)
 #prepare data for autoencoder
 images = np.asarray(galaxy_images, dtype=np.float32)
 
-#normalise pixel values to [0, 1] range
+#normalise pixel values 0, 1
 lower = np.percentile(images, 1)
 upper = np.percentile(images, 99)
 
@@ -84,7 +95,7 @@ images = (images - lower) / (upper - lower)
 images = tf.image.resize(images[..., np.newaxis], (28, 28)).numpy()
 
 
-x_train, x_test = train_test_split(images, test_size=0.2, random_state=42)
+x_train, x_test, gal_id_train, gal_id_test = train_test_split(images, galaxy_ids, test_size=0.2, random_state=42)
 
 
 print("Training images:", x_train.shape)
@@ -138,6 +149,9 @@ reconstructed = autoencoder.predict(x_test)
 #calculate reconstruction error for anomaly detection
 reconstruction_errors = np.mean(np.square(x_test - reconstructed), axis=(1, 2, 3))
 
+print(f"Reconstruction errors shape: {reconstruction_errors.shape}")
+
+
 #visualise reconstruction error
 plt.figure(figsize=(10, 5))
 
@@ -154,8 +168,12 @@ plt.savefig("recon_error_autoencoder.png", dpi=200)
 #identify anomalies based on reconstruction error
 
 anomaly_threshold = np.percentile(reconstruction_errors, 95)
-anomalies = x_test[reconstruction_errors > anomaly_threshold]
-anomaly_indices = np.where(anomalies)[0]
+anomaly_check = reconstruction_errors > anomaly_threshold
+
+anomaly_indices = np.where(anomaly_check)[0]
+
+normal_errors = reconstruction_errors[~anomaly_check]
+anomaly_errors = reconstruction_errors[anomaly_check]
 
 #visualise anomalies using reconstruction error density plot
 fig = plt.subplots(figsize=(10, 6))
@@ -163,8 +181,7 @@ fig = plt.subplots(figsize=(10, 6))
 lo, hi = np.percentile(reconstruction_errors, [0.1, 99.9])
 bins = np.linspace(lo, hi, 80)
 
-normal_errors = reconstruction_errors[~anomalies]
-anomaly_errors = reconstruction_errors[anomalies]
+
 
 plt.hist(normal_errors, bins=bins, density=True, alpha=0.5,
         color="tab:green", label="Normal")
