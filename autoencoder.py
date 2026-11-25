@@ -196,7 +196,7 @@ with fits.open(path / vis_mosaic, memmap=True) as hdul:
         reconstruction_errors.extend(errors.numpy())
 
         original_images.extend(images.numpy())
-        reconstructed_images.extend(reconstructed.numpy())
+        reconstructed_images.extend(reconstructed)
 
     reconstruction_errors = np.array(reconstruction_errors)
 
