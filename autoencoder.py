@@ -23,10 +23,10 @@ import astropy.units as u
 
 path = Path("/user/home/dl23921/ass1/DIP_2026")
 
-morph_cat = "EUC_MER_FINAL-MORPH-CAT_TILE102159484-AE979F_20241026T003045.182961Z_00.00.fits"
+cutout_cat = "EUC_MER_FINAL-CUTOUTS-CAT_TILE102159484-73BCF1_20241025T145359.184204Z_00.00.fits"
 
-with fits.open(path / morph_cat) as hdul:
-    morph_cat_table = Table(hdul[1].data)
+with fits.open(path / cutout_cat) as hdul:
+    cutout_table = Table(hdul[1].data)
 
 vis_mosaic = "EUC_MER_BGSUB-MOSAIC-VIS_TILE102159484-116033_20241025T015934.885975Z_00.00.fits"
 
@@ -45,7 +45,7 @@ with fits.open(path / vis_mosaic) as hdul:
     mosaic_img = np.asarray(hdul[0].data, dtype=np.float32)
     wcs = WCS(hdul[0].header)
     
-    for row in morph_cat_table:
+    for row in cutout_table:
 
     #get ra and dec of galaxy
         ra = row['RIGHT_ASCENSION']
