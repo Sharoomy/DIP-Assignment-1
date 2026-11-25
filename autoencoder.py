@@ -76,11 +76,11 @@ def gal_img_gen(mosaic_img, wcs, cutout_table, split=None):
 
 def normalise_images(images, galaxy_id):
 
-    image = np.clip(images, lower, upper)
+    image = tf.clip_by_value(images, lower, upper)
     image = (image - lower) / (upper - lower)
 
     #resize images to 28x28 for autoencoder input
-    image = tf.image.resize(image[..., np.newaxis], (28, 28))
+    image = tf.image.resize(image[..., tf.newaxis], (28, 28))
 
     return image, galaxy_id
 
@@ -248,7 +248,7 @@ with fits.open(path / vis_mosaic, memmap=True) as hdul:
 
         reconstructed_batch = autoencoder.predict(images, verbose=0)
 
-        batch_errors = np.mean(np.square(images.numpy() - reconstructed_batch),axis=(1, 2, 3))
+        batch_errors = tf.reduce_mean(tf.square(images - reconstructed_batch),axis=(1, 2, 3))
 
         for j, error in enumerate(batch_errors):
 
