@@ -19,7 +19,15 @@ from astropy.nddata import Cutout2D
 from astropy.nddata.utils import NoOverlapError
 from astropy.coordinates import SkyCoord
 import astropy.units as u
-#clean data
+
+#settings
+cutout_size = 64
+
+latent_dimensions = 64
+epochs = 10
+batch_size = 64
+
+#load data
 
 path = Path("/user/home/dl23921/ass1/DIP_2026")
 
@@ -31,75 +39,54 @@ with fits.open(path / cutout_cat) as hdul:
 vis_mosaic = "EUC_MER_BGSUB-MOSAIC-VIS_TILE102159484-116033_20241025T015934.885975Z_00.00.fits"
 
 
-
-
 #make cutouts of galaxies from mosaic image using info from galaxy cutouts catalog
 
-cutout_size = 64
+def gal_img_gen(mosaic_img, wcs, cutout_table, split=None):
 
-galaxy_images = []
-galaxy_ids = []
+    for i, row in enumerate(cutout_table):
 
-with fits.open(path / vis_mosaic) as hdul:
-    hdul.info()
-    mosaic_img = np.asarray(hdul[0].data, dtype=np.float32)
-    wcs = WCS(hdul[0].header)
-    
-    for row in cutout_table:
+        #get train and test data
+        if split == "train" and i % 5 == 0:
+            continue
 
-    #get ra and dec of galaxy
+        if split == "test" and i % 5 != 0:
+            continue
+
+        #get galaxy position from catalog
         ra = row['RIGHT_ASCENSION']
         dec = row['DECLINATION']
 
-    #convert coordinates to use for mosaic
         position = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
 
         try:
-            #cut out image around galaxy
             cutout = Cutout2D(
-                    mosaic_img,
-                    position,
-                    size=(cutout_size, cutout_size),
-                    wcs=wcs,
-                    mode='partial',
-                    fill_value=np.nan
-                )
-            print(f"Cutout data shape: {cutout.data.shape}")
+                mosaic_img,
+                position,
+                size=(cutout_size, cutout_size),
+                wcs=wcs,
+                mode='partial',
+                fill_value=np.nan
+            )
 
         except NoOverlapError:
-                continue
+            continue
 
         if np.isfinite(cutout.data).all():
 
-            galaxy_images.append(cutout.data)
-            galaxy_ids.append(row['OBJECT_ID'])
+            image = cutout.data.astype(np.float32)
 
-print(f"Mosaic image type: {type(mosaic_img)}")
-print(f"Mosaic image shape: {mosaic_img.shape}")
-
-galaxy_images = np.array(galaxy_images)
-galaxy_ids = np.array(galaxy_ids)
+            yield image, np.int64(row['OBJECT_ID'])
 
 
-#prepare data for autoencoder
-images = np.asarray(galaxy_images, dtype=np.float32)
+def normalise_images(images, galaxy_id):
 
-#normalise pixel values 0, 1
-lower = np.percentile(images, 1)
-upper = np.percentile(images, 99)
+    image = np.clip(images, lower, upper)
+    image = (image - lower) / (upper - lower)
 
-images = np.clip(images, lower, upper)
-images = (images - lower) / (upper - lower)
+    #resize images to 28x28 for autoencoder input
+    image = tf.image.resize(image[..., np.newaxis], (28, 28))
 
-#resize images to 28x28 for autoencoder input
-images = tf.image.resize(images[..., np.newaxis], (28, 28)).numpy()
-
-
-x_train, x_test, gal_id_train, gal_id_test = train_test_split(images, galaxy_ids, test_size=0.2, random_state=42)
-
-
-print("Training images:", x_train.shape)
-print("Testing images:", x_test.shape)
+    return image, galaxy_id
 
 #make autoencoder model
 class SimpleAutoencoder(Model):
@@ -124,96 +111,150 @@ class SimpleAutoencoder(Model):
         return decoded
 
 
-#train autoencoder
+with fits.open(path / vis_mosaic, memmap=True) as hdul:
+    mosaic_img = hdul[0].data
+    wcs = WCS(hdul[0].header)
 
-latent_dimensions = 64
+    print(f"Mosaic image shape: {mosaic_img.shape}")
 
-autoencoder = SimpleAutoencoder(latent_dimensions)
+    #estimate normalisation from a sample of images
+    sample_images = []
 
-autoencoder.compile(optimizer='adam', loss=losses.MeanSquaredError())
+    for image, galaxy_id in gal_img_gen(
+        mosaic_img, wcs, cutout_table
+    ):
 
-history = autoencoder.fit(
-    x_train,
-    x_train,
-    epochs=10,
-    batch_size=256,
-    shuffle=True,
-    validation_data=(x_test, x_test)
-)
+        sample_images.append(image.ravel())
+
+        if len(sample_images) >= 200:
+            break
+
+    if len(sample_images) == 0:
+        raise ValueError("No valid galaxy cutouts were found.")
+
+    sample_pixels = np.concatenate(sample_images)
+
+    lower = np.percentile(sample_pixels, 1)
+    upper = np.percentile(sample_pixels, 99)
+
+    if upper <= lower:
+        raise ValueError("Invalid normalisation limits.")
+
+    print("Lower limit:", lower)
+    print("Upper limit:", upper)
+
+    #create train and test datasets
+    output_signature = (
+        tf.TensorSpec(shape=(64, 64), dtype=tf.float32),
+        tf.TensorSpec(shape=(), dtype=tf.int64)
+    )
+
+    train_images = tf.data.Dataset.from_generator(
+        lambda: gal_img_gen(
+            mosaic_img, wcs, cutout_table, split="train"
+        ),
+        output_signature=output_signature
+    )
+
+    test_images = tf.data.Dataset.from_generator(
+        lambda: gal_img_gen(
+            mosaic_img, wcs, cutout_table, split="test"
+        ),
+        output_signature=output_signature
+    )
+
+    #preprocess datasets
+    x_train = train_images.map(normalise_images, num_parallel_calls=tf.data.AUTOTUNE)
+    x_test = test_images.map(normalise_images, num_parallel_calls=tf.data.AUTOTUNE)
+
+    #train autoencoder
+
+    autoencoder = SimpleAutoencoder(latent_dimensions)
+
+    autoencoder.compile(optimizer='adam', loss=losses.MeanSquaredError())
+
+    history = autoencoder.fit(
+        x_train,
+        epochs=epochs,
+        shuffle=True,
+        validation_data=x_test
+    )
+
+    #calculate reconstruction error for anomaly detection
+    reconstruction_errors = []
+
+    for images, targets in x_test:
+
+        reconstructed = autoencoder.predict(images, verbose=0)
+
+        errors = np.mean(
+            np.square(images.numpy() - reconstructed),
+            axis=(1, 2, 3)
+        )
+
+    reconstruction_errors.extend(errors)
+    reconstruction_errors = np.array(reconstruction_errors)
+
+    print("Reconstruction errors shape:", reconstruction_errors.shape)
+    
+    #visualise reconstruction error
+    plt.figure(figsize=(10, 5))
+
+    plt.hist(reconstruction_errors, bins=50)
+
+    plt.xlabel("Reconstruction error")
+    plt.ylabel("Number of galaxies")
+    plt.title("Galaxy Reconstruction Errors")
+
+    plt.savefig("recon_error_autoencoder.png", dpi=200)
 
 
-#reconstruct galaxy images
 
-reconstructed = autoencoder.predict(x_test)
+    #identify anomalies based on reconstruction error
 
-#calculate reconstruction error for anomaly detection
-reconstruction_errors = np.mean(np.square(x_test - reconstructed), axis=(1, 2, 3))
+    anomaly_threshold = np.percentile(reconstruction_errors, 95)
+    anomaly_check = reconstruction_errors > anomaly_threshold
 
-print(f"Reconstruction errors shape: {reconstruction_errors.shape}")
+    anomaly_indices = np.where(anomaly_check)[0]
 
+    normal_errors = reconstruction_errors[~anomaly_check]
+    anomaly_errors = reconstruction_errors[anomaly_check]
 
-#visualise reconstruction error
-plt.figure(figsize=(10, 5))
+    #visualise anomalies using reconstruction error density plot
+    plt.figure(figsize=(10, 6))
 
-plt.hist(reconstruction_errors, bins=50)
+    lo, hi = np.percentile(reconstruction_errors, [0.1, 99.9])
+    bins = np.linspace(lo, hi, 80)
 
-plt.xlabel("Reconstruction error")
-plt.ylabel("Number of galaxies")
-plt.title("Galaxy Reconstruction Errors")
+    plt.hist(normal_errors, bins=bins, density=True, alpha=0.5,
+            color="tab:green", label="Normal")
 
-plt.savefig("recon_error_autoencoder.png", dpi=200)
+    plt.hist(anomaly_errors, bins=bins, density=True, alpha=0.5,
+            color="tab:red", label="Anomaly")
 
-
-
-#identify anomalies based on reconstruction error
-
-anomaly_threshold = np.percentile(reconstruction_errors, 95)
-anomaly_check = reconstruction_errors > anomaly_threshold
-
-anomaly_indices = np.where(anomaly_check)[0]
-
-normal_errors = reconstruction_errors[~anomaly_check]
-anomaly_errors = reconstruction_errors[anomaly_check]
-
-#visualise anomalies using reconstruction error density plot
-fig = plt.subplots(figsize=(10, 6))
-
-lo, hi = np.percentile(reconstruction_errors, [0.1, 99.9])
-bins = np.linspace(lo, hi, 80)
+    plt.xlabel("Reconstruction Error")
+    plt.ylabel("Density")
+    plt.legend()
+    plt.savefig("anomaly_density_autoencoder.png", dpi=200)
 
 
+    #compare galaxies with reconstructed images for anomalies
 
-plt.hist(normal_errors, bins=bins, density=True, alpha=0.5,
-        color="tab:green", label="Normal")
+    plt.figure(figsize=(10, 5))
 
-plt.hist(anomaly_errors, bins=bins, density=True, alpha=0.5,
-        color="tab:red", label="Anomaly")
+    for i in range(min(3, len(anomaly_indices))):
 
-plt.xlabel("Reconstruction Error")
-plt.ylabel("Density")
-plt.legend()
-plt.savefig("anomaly_density_autoencoder.png", dpi=200)
+        #original image
+        plt.subplot(2, 3, i + 1)
+        plt.imshow(x_test[idx].squeeze(), cmap='gray')
+        plt.title("Original")
+        plt.axis('off')
 
+        #reconstructed image
+        plt.subplot(2, 3, i + 4)
+        plt.imshow(reconstructed[idx].squeeze(), cmap='gray')
+        plt.title("Reconstructed")
+        plt.axis('off')
 
-#compare galaxies with reconstructed images for anomalies
-
-plt.figure(figsize=(10, 5))
-
-for i in range(3):
-    idx = anomaly_indices[i]
-
-    #original image
-    plt.subplot(2, 3, i + 1)
-    plt.imshow(x_test[idx].squeeze(), cmap='gray')
-    plt.title("Original")
-    plt.axis('off')
-
-    #reconstructed image
-    plt.subplot(2, 3, i + 4)
-    plt.imshow(reconstructed[idx].squeeze(), cmap='gray')
-    plt.title("Reconstructed")
-    plt.axis('off')
-
-plt.tight_layout()
-plt.savefig("gal_compare_autoencoder.png", dpi=200)
-
+    plt.tight_layout()
+    plt.savefig("gal_compare_autoencoder.png", dpi=200)
