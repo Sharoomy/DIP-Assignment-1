@@ -1,14 +1,10 @@
 #imports
 import numpy as np
 import matplotlib.pyplot as plt
-import pandas as pd
 
 import tensorflow as tf
-from tensorflow import keras
 from tensorflow.keras import layers, losses
 from tensorflow.keras.models import Model
-
-from sklearn.model_selection import train_test_split
 
 from astropy.io import fits
 from astropy.table import Table
@@ -24,7 +20,7 @@ import astropy.units as u
 cutout_size = 64
 
 latent_dimensions = 64
-epochs = 10
+epochs = 3
 batch_size = 64
 
 #load data
@@ -167,6 +163,10 @@ with fits.open(path / vis_mosaic, memmap=True) as hdul:
     x_train = train_images.map(normalise_images, num_parallel_calls=tf.data.AUTOTUNE)
     x_test = test_images.map(normalise_images, num_parallel_calls=tf.data.AUTOTUNE)
 
+    #puts data into batches
+    x_train = x_train.batch(batch_size).prefetch(1)
+    x_test = x_test.batch(batch_size).prefetch(1)
+
     #train autoencoder
 
     autoencoder = SimpleAutoencoder(latent_dimensions)
@@ -192,7 +192,8 @@ with fits.open(path / vis_mosaic, memmap=True) as hdul:
             axis=(1, 2, 3)
         )
 
-    reconstruction_errors.extend(errors)
+        reconstruction_errors.extend(errors)
+
     reconstruction_errors = np.array(reconstruction_errors)
 
     print("Reconstruction errors shape:", reconstruction_errors.shape)
@@ -240,21 +241,46 @@ with fits.open(path / vis_mosaic, memmap=True) as hdul:
 
     #compare galaxies with reconstructed images for anomalies
 
-    plt.figure(figsize=(10, 5))
+    original_anomalies = []
+    reconstructed_anomalies = []
 
-    for i in range(min(3, len(anomaly_indices))):
+    for images, targets in x_test:
+
+        reconstructed_batch = autoencoder.predict(images, verbose=0)
+
+        batch_errors = np.mean(np.square(images.numpy() - reconstructed_batch),axis=(1, 2, 3))
+
+        for j, error in enumerate(batch_errors):
+
+            if error > anomaly_threshold:
+
+                original_anomalies.append(images[j].numpy())
+                reconstructed_anomalies.append(reconstructed_batch[j])
+
+                if len(original_anomalies) >= 3:
+                    break
+
+        if len(original_anomalies) >= 3:
+            break
+
+
+    # Visualise anomalies
+        plt.figure(figsize=(10, 5))
+
+        for i in range(len(original_anomalies)):
 
         #original image
-        plt.subplot(2, 3, i + 1)
-        plt.imshow(x_test[idx].squeeze(), cmap='gray')
-        plt.title("Original")
-        plt.axis('off')
+            plt.subplot(2, 3, i + 1)
+            plt.imshow(original_anomalies[i].squeeze(), cmap='gray')
+            plt.title("Original")
+            plt.axis('off')
 
-        #reconstructed image
-        plt.subplot(2, 3, i + 4)
-        plt.imshow(reconstructed[idx].squeeze(), cmap='gray')
-        plt.title("Reconstructed")
-        plt.axis('off')
+            #reconstructed image
+            plt.subplot(2, 3, i + 4)
+            plt.imshow(reconstructed_anomalies[i].squeeze(), cmap='gray')
+            plt.title("Reconstructed")
+            plt.axis('off')
 
     plt.tight_layout()
     plt.savefig("gal_compare_autoencoder.png", dpi=200)
+
