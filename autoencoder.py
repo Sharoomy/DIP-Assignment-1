@@ -160,16 +160,14 @@ with fits.open(path / vis_mosaic, memmap=True) as hdul:
     )
 
     #preprocess datasets
-    x_train = train_images.map(normalise_images, num_parallel_calls=1)
-    x_test = test_images.map(normalise_images, num_parallel_calls=1)
-
-    #make sure autoencoder only reconstructs image and not id
-    x_train = train_images.map(lambda image, galaxy_id: (image, image))
-    x_test = test_images.map(lambda image, galaxy_id: (image, image))
     
-    #puts data into batches
-    x_train = x_train.shuffle(500).batch(batch_size).prefetch(1)
-    x_test = x_test.batch(batch_size).prefetch(1)
+    x_train = train_images.map(normalise_images, num_parallel_calls=tf.data.AUTOTUNE) \
+                      .map(lambda image, galaxy_id: (image, image)) \
+                      .shuffle(500).batch(batch_size).prefetch(tf.data.AUTOTUNE)
+    
+    x_test = test_images.map(normalise_images, num_parallel_calls=tf.data.AUTOTUNE) \
+                      .map(lambda image, galaxy_id: (image, image)) \
+                      .shuffle(500).batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
     #train autoencoder
 
