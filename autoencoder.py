@@ -167,7 +167,7 @@ with fits.open(path / vis_mosaic, memmap=True) as hdul:
     
     x_test = test_images.map(normalise_images, num_parallel_calls=tf.data.AUTOTUNE) \
                       .map(lambda image, galaxy_id: (image, image)) \
-                      .shuffle(500).batch(batch_size).prefetch(tf.data.AUTOTUNE)
+                      .batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
     #train autoencoder
 
