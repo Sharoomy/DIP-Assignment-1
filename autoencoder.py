@@ -20,7 +20,7 @@ import astropy.units as u
 cutout_size = 64
 
 latent_dimensions = 64
-epochs = 3
+epochs = 5
 batch_size = 64
 
 #load data
