@@ -38,7 +38,11 @@ morph_cat_df = morph_cat_table.to_pandas()
 
 morph_cat_df = morph_cat_df.apply(pd.to_numeric, errors='coerce')
 morph_cat_df = morph_cat_df.replace([np.inf, -np.inf], np.nan)
-morph_cat_df = morph_cat_df.loc[:, morph_cat_df.std() > 0]
+
+#drops collumns with nans above 25%
+morph_cat_df = morph_cat_df.loc[:, morph_cat_df.isna().mean() <= 0.25]
+morph_cat_df = morph_cat_df.dropna()
+morph_cat_df = morph_cat_df.loc[:, morph_cat_df.std() > 0].astype(np.float64)
 
 #remove all non numerical collumns
 morph_cat_df = morph_cat_df.select_dtypes(exclude=['object'])
