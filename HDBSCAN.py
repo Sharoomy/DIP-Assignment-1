@@ -122,12 +122,12 @@ plt.title(f'Top {n_imp_features} Features from PCA')
 plt.tight_layout()
 plt.savefig('pca_imp_feat.png', dpi=200)
 
-# select 20 most important original features
+#select  most important original features
 top_features = feature_importance_df['Feature'].head(
     n_imp_features
 ).tolist()
 
-# extract selected features from scaled dataset
+#extract selected features from scaled dataset
 selected_indices = [
     list(morph_cat_df.columns).index(col)
     for col in top_features
