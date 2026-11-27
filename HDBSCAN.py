@@ -165,9 +165,13 @@ else:
     print("Silhouette undefined: fewer than 2 clusters found")
 
 #desnity plot for each feature
+
+n_cols = 3 
+n_rows = int(np.ceil(n_imp_features / n_cols))
+
 groups = labels_s.value_counts().index[:6]            
 
-fig, axes = plt.subplots(2, 3, figsize=(16, 9))
+fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows))
 axes = axes.flatten()
 
 for j, (ax, feat) in enumerate(zip(axes, top_features)):
@@ -185,7 +189,9 @@ for j, (ax, feat) in enumerate(zip(axes, top_features)):
     ax.set_ylabel("Density")
     ax.legend(fontsize=7)
 
-axes[-1].set_visible(False)                           
+for i in range(len(top_features), len(axes)):
+    axes[i].set_visible(False)
+                        
 plt.tight_layout()
 plt.savefig("hdbscan_cluster_density.png", dpi=200)
 plt.close(fig)
@@ -208,19 +214,35 @@ fig, axes = plt.subplots(2, (n_imp_features//2), figsize=(16, 9))
 axes = axes.flatten()
 
 for ax, col in zip(axes, top_features):
-   
-    lo, hi = np.percentile(morph_cat_df[col], [0.1, 99.9])
-    bins = np.linspace(lo, hi, 80)
+    # 1. Get data for both groups
+    data_norm = normal[col].dropna()
+    data_anom = anomalies[col].dropna()
+    
+    # 2. Determine a robust range that includes both groups
+    # We take the min/max of the actual data present in both
+    all_data = pd.concat([data_norm, data_anom])
+    if len(all_data) > 0:
+        lo = all_data.min()
+        hi = all_data.max()
 
-    ax.hist(normal[col], bins=bins, density=True, alpha=0.5,
-            color="tab:green", label=f"Normal (N={len(normal):,})")
-    ax.hist(anomalies[col], bins=bins, density=True, alpha=0.5,
-            color="tab:red", label=f"Anomaly (N={len(anomalies):,})")
+        print(f"Feature: {col}")
+        print(f"  Normal range: {normal[col].min():.2f} to {normal[col].max():.2f}")
+        print(f"  Anomaly range: {anomalies[col].min():.2f} to {anomalies[col].max():.2f}")
+        print(f"  Plotting bins: {lo:.2f} to {hi:.2f}")
 
-    ax.set_xlabel(col)
-    ax.set_ylabel("Density")
-    ax.legend()
+        # Use more bins if the range is large, fewer if small
+        bins = np.linspace(lo, hi, 80)
 
+        ax.hist(data_norm, bins=bins, density=True, alpha=0.5,
+                color="tab:green", label=f"Normal (N={len(data_norm):,})")
+        ax.hist(data_anom, bins=bins, density=True, alpha=0.5,
+                color="tab:red", label=f"Anomaly (N={len(data_anom):,})")
+        
+        ax.set_xlabel(col)
+        ax.set_ylabel("Density")
+        ax.legend(fontsize=8)
+    else:
+        ax.set_title(f"{col} (No Data)")
 
 plt.tight_layout()
 plt.savefig("anomaly_density_hdbscan.png", dpi=200)
