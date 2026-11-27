@@ -22,6 +22,7 @@ n_imp_features = 10
 contamination = 0.05  
 n_estimators = 100
 sample_size = 256
+ran_state = 22
 
 #load data
 
@@ -33,7 +34,6 @@ with fits.open(path / morph_cat) as hdul:
     morph_cat_table = Table(hdul[1].data)
 
 #valisdation features
-
 val_features = [
     "MAJOR_MERGER",
     "PECULIAR_YES",
@@ -155,7 +155,7 @@ print("Remaining missing values:", morph_cat_df.isna().sum().sum())
 iso_forest = IsolationForest(contamination=contamination, 
                              n_estimators=n_estimators, 
                              max_samples=sample_size, 
-                             random_state=42)
+                             random_state=ran_state)
 
 iso_forest.fit(X_selected)
 
