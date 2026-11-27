@@ -61,7 +61,6 @@ physical_features = [
     if col not in metadata_features and col not in val_features
 ]
 
-
 #selects numerical collumns
 morph_cat_df = pd.DataFrame( {f: np.asarray(morph_cat_table[f], dtype=float) for f in physical_features})
 
@@ -73,11 +72,18 @@ morph_cat_df = morph_cat_df.loc[:, morph_cat_df.nunique(dropna=True) > 1]
 
 print("Rows and columns after cleaning:", morph_cat_df.shape)
 
+#make validation features dataframe v
+val_df = pd.DataFrame(
+    {f: np.asarray(morph_cat_table[f])[morph_cat_df.index] for f in val_features},
+    index=morph_cat_df.index,
+)
+
 #replace missing values with column medians
 imputer = SimpleImputer(strategy="median")
 X_imputed = imputer.fit_transform(morph_cat_df)
 
 morph_cat_df_imputed = pd.DataFrame(X_imputed, columns=morph_cat_df.columns,index=morph_cat_df.index)
+morph_cat_df = morph_cat_df_imputed 
 
 #scale data
 scaler = StandardScaler()
@@ -175,10 +181,11 @@ anomalies = morph_cat_df[morph_cat_df["anomaly"] == -1]
 #density plots of normal vs anomalous objects for every feature
 plot_cols = top_features + ["anomaly_score"]
 
-fig, axes = plt.subplots(2, 3, figsize=(16, 9))
+fig, axes = plt.subplots(3, 4, figsize=(20, 12))
 axes = axes.flatten()
 
 for ax, col in zip(axes, plot_cols):
+   
    
     lo, hi = np.percentile(morph_cat_df[col], [0.1, 99.9])
     bins = np.linspace(lo, hi, 80)
@@ -193,7 +200,11 @@ for ax, col in zip(axes, plot_cols):
     ax.legend()
 
 #decision threshold line at 0
-axes[-1].axvline(0, color="black", ls="--", lw=1)
+axes[len(plot_cols) - 1].axvline(0, color="black", ls="--", lw=1)
+
+#hide the unused panel
+for ax in axes[len(plot_cols):]:
+    ax.set_visible(False)
 
 plt.tight_layout()
 plt.savefig("anomaly_density_isoforest.png", dpi=200)
@@ -205,8 +216,8 @@ plt.savefig("anomaly_density_isoforest.png", dpi=200)
 #combines validation features
 results_df = pd.DataFrame({
     'is_anomaly_predicted': morph_cat_df["anomaly"],
-    'is_merger_actual': morph_cat_df["MAJOR_MERGER"],
-    'is_peculiar_actual': morph_cat_df["PECULIAR_YES"]
+    'is_merger_actual': val_df["MAJOR_MERGER"],
+    'is_peculiar_actual': val_df["PECULIAR_YES"]
 })
 
 true_positives = ((results_df['is_anomaly_predicted'] == -1) & 
