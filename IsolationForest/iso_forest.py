@@ -6,6 +6,8 @@ from sklearn.ensemble import IsolationForest
 from sklearn.decomposition import PCA
 from sklearn.impute import SimpleImputer
 
+from sklearn.preprocessing import StandardScaler
+
 from astropy.io import fits
 from astropy.table import Table
 from pathlib import Path
@@ -14,10 +16,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 
-#parameters for isolation forest
+#parameters
+n_imp_features = 10
+
 contamination = 0.05  
 n_estimators = 100
 sample_size = 256
+
 #load data
 
 path = Path("/user/home/dl23921/ass1/DIP_2026")
@@ -34,6 +39,7 @@ val_features = [
     "PECULIAR_YES",
     "CLUMP_COUNT_UNUSUAL_ANY_THRESHOLD"
 ]
+
 metadata_features = [col for col in morph_cat_table.colnames
     if (
         col.endswith("_ERR")
@@ -49,27 +55,29 @@ metadata_features = [col for col in morph_cat_table.colnames
     )
 ]
 
+#select physical features as everything that isnt in metadata and validation
 physical_features = [
     col for col in morph_cat_table.colnames
-    if col not in metadata_features
+    if col not in metadata_features and col not in val_features
 ]
 
-#selects numerical collumns and drops constant collumns
+
+#selects numerical collumns
 morph_cat_df = pd.DataFrame( {f: np.asarray(morph_cat_table[f], dtype=float) for f in physical_features})
 
 morph_cat_df = morph_cat_df.apply(pd.to_numeric, errors='coerce')
 morph_cat_df = morph_cat_df.replace([np.inf, -np.inf], np.nan)
 
+#drops constant collumns
 morph_cat_df = morph_cat_df.loc[:, morph_cat_df.nunique(dropna=True) > 1]
 
 print("Rows and columns after cleaning:", morph_cat_df.shape)
 
-# replace missing values with column medians
+#replace missing values with column medians
 imputer = SimpleImputer(strategy="median")
 X_imputed = imputer.fit_transform(morph_cat_df)
 
 morph_cat_df_imputed = pd.DataFrame(X_imputed, columns=morph_cat_df.columns,index=morph_cat_df.index)
-#exclude insdentifying features
 
 #scale data
 scaler = StandardScaler()
@@ -149,12 +157,12 @@ iso_forest = IsolationForest(contamination=contamination,
                              max_samples=sample_size, 
                              random_state=42)
 
-iso_forest.fit(morph_mat)
+iso_forest.fit(X_selected)
 
 #calculate anomaly scores and predictions
 
-morph_cat_df["anomaly_score"] = iso_forest.decision_function(morph_mat)
-morph_cat_df["anomaly"] = iso_forest.predict(morph_mat)
+morph_cat_df["anomaly_score"] = iso_forest.decision_function(X_selected)
+morph_cat_df["anomaly"] = iso_forest.predict(X_selected)
 
 print(morph_cat_df["anomaly"].value_counts())
 
@@ -165,7 +173,7 @@ anomalies = morph_cat_df[morph_cat_df["anomaly"] == -1]
 #visualise anomaly scores using density plot
 
 #density plots of normal vs anomalous objects for every feature
-plot_cols = numerical_features + ["anomaly_score"]
+plot_cols = top_features + ["anomaly_score"]
 
 fig, axes = plt.subplots(2, 3, figsize=(16, 9))
 axes = axes.flatten()
@@ -197,8 +205,8 @@ plt.savefig("anomaly_density_isoforest.png", dpi=200)
 #combines validation features
 results_df = pd.DataFrame({
     'is_anomaly_predicted': morph_cat_df["anomaly"],
-    'is_merger_actual': val_df["MAJOR_MERGER"],
-    'is_peculiar_actual': val_df["PECULIAR_YES"]
+    'is_merger_actual': morph_cat_df["MAJOR_MERGER"],
+    'is_peculiar_actual': morph_cat_df["PECULIAR_YES"]
 })
 
 true_positives = ((results_df['is_anomaly_predicted'] == -1) & 
